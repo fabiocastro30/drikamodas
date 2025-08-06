@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-translate-key="pageTitle">CRM de Tarefas com Kanban</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .kanban-column { min-height: 200px; }
+        .dragging { opacity: 0.5; transform: scale(1.05); background-color: #e0e7ff; }
+        .task-title-button { cursor: pointer; }
+        .task-title-button:hover { text-decoration: underline; }
+        .dashboard-card-active {
+            background-color: #bfdbfe !important;
+            border-color: #3b82f6 !important;
+        }
+        .lang-btn-active {
+            color: #2563eb;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="relative bg-white shadow-md rounded-lg p-6 mb-8">
+            <h1 class="text-3xl font-bold text-gray-800" data-translate-key="headerTitle">Dashboard de Tarefas</h1>
+            <p class="text-gray-600 mt-1" data-translate-key="headerSubtitle">Organize, filtre e gerencie suas tarefas com a visualização Kanban.</p>
+            <div class="absolute top-4 right-6 flex items-center space-x-2">
+                <button id="lang-pt" class="text-sm font-medium text-gray-500 hover:text-blue-600 transition px-2 py-1">PT</button>
+                <span class="text-gray-300">|</span>
+                <button id="lang-zh" class="text-sm font-medium text-gray-500 hover:text-blue-600 transition px-2 py-1">中文</button>
+            </div>
+        </header>
+
+        <!-- Performance Section (First on Mobile) -->
+        <section id="performance-analysis" class="bg-white shadow-md rounded-lg p-6 mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-semibold text-gray-700" data-translate-key="performanceTitle">Análise de Performance (Mês Atual)</h2>
+            </div>
+            <div id="performance-content" class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <!-- Stats -->
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between items-baseline mb-1">
+                            <span class="font-bold text-gray-700" data-translate-key="performanceCompletedThisMonth">Tarefas Concluídas (no mês)</span>
+                            <span id="completed-count" class="text-lg font-bold text-green-600">0</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div id="completed-bar" class="bg-green-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-baseline mb-1">
+                            <span class="font-bold text-gray-700" data-translate-key="performanceOpenThisMonth">Tarefas Abertas (no mês)</span>
+                             <span id="open-count" class="text-lg font-bold text-yellow-600">0</span>
+                        </div>
+                         <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div id="open-bar" class="bg-yellow-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                     <div class="mt-4 text-center border-t pt-4">
+                        <p class="text-gray-600">
+                            <span id="completion-percentage" class="text-2xl font-bold">0%</span>
+                            <span data-translate-key="completionRateMonth">taxa de conclusão para o mês.</span>
+                        </p>
+                    </div>
+                </div>
+                <!-- Chart -->
+                <div class="relative h-48 bg-gray-50 p-4 rounded-lg flex justify-around items-end border">
+                     <div id="chart-completed" class="w-1/3 bg-green-400 hover:bg-green-500 rounded-t-lg transition-all duration-500" style="height: 0%;">
+                        <div class="text-center text-white font-bold relative -top-6" id="chart-completed-label"></div>
+                     </div>
+                     <div id="chart-open" class="w-1/3 bg-yellow-400 hover:bg-yellow-500 rounded-t-lg transition-all duration-500" style="height: 0%;">
+                        <div class="text-center text-white font-bold relative -top-6" id="chart-open-label"></div>
+                     </div>
+                     <div class="absolute bottom-0 left-0 w-full h-px bg-gray-300"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Status Dashboard (Second on Mobile) -->
+        <section id="dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div data-status-filter="Aberto" class="cursor-pointer bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg shadow hover:bg-yellow-200 transition"><h3 class="font-bold" data-translate-key="statusOpen">Abertas</h3><p id="count-aberto" class="text-2xl">0</p></div>
+            <div data-status-filter="Em andamento" class="cursor-pointer bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow hover:bg-blue-200 transition"><h3 class="font-bold" data-translate-key="statusInProgress">Em Andamento</h3><p id="count-em-andamento" class="text-2xl">0</p></div>
+            <div data-status-filter="Concluído" class="cursor-pointer bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow hover:bg-green-200 transition"><h3 class="font-bold" data-translate-key="statusCompleted">Concluídas</h3><p id="count-concluido" class="text-2xl">0</p></div>
+        </section>
+
+        <div class="mb-8">
+            <div class="relative inline-block" id="add-menu">
+                <button id="add-main-btn" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-md hover:bg-blue-700 transition-colors duration-300" data-translate-key="add">Adicionar</button>
+                <div id="add-options" class="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-20 hidden">
+                    <a href="#" id="add-task-btn" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" data-translate-key="newTask">Nova Tarefa</a>
+                    <a href="#" id="add-responsible-btn" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" data-translate-key="newResponsible">Novo Responsável</a>
+                </div>
+            </div>
+        </div>
+
+        <div id="task-form-container" class="bg-white shadow-md rounded-lg p-6 mb-8 hidden">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4" data-translate-key="addNewTaskTitle">Adicionar Nova Tarefa</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="text" id="taskTitle" data-translate-key-placeholder="taskTitlePlaceholder" placeholder="Título da Tarefa" class="p-3 border border-gray-300 rounded-md">
+                <input type="date" id="taskDueDate" class="p-3 border border-gray-300 rounded-md text-gray-600">
+                <textarea id="taskDescription" data-translate-key-placeholder="taskDescPlaceholder" placeholder="Descrição da tarefa..." rows="3" class="md:col-span-2 p-3 border border-gray-300 rounded-md"></textarea>
+                <select id="taskResponsible" class="p-3 border border-gray-300 rounded-md"><option value="" data-translate-key="selectResponsible">Selecione o Responsável</option></select>
+                <select id="taskUrgency" class="p-3 border border-gray-300 rounded-md"></select>
+                <div class="md:col-span-2"><label for="taskAttachmentLink" class="block text-sm font-medium text-gray-700" data-translate-key="attachmentLink">Link do Anexo</label><input type="text" id="taskAttachmentLink" placeholder="https://..." class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"/></div>
+                <button id="createTaskBtn" class="md:col-span-2 bg-blue-600 text-white font-bold py-3 px-6 rounded-md hover:bg-blue-700" data-translate-key="createTask">Criar Tarefa</button>
+            </div>
+        </div>
+
+        <div id="responsible-form-container" class="bg-white shadow-md rounded-lg p-6 mb-8 hidden">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4" data-translate-key="addNewResponsibleTitle">Adicionar Novo Responsável</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="text" id="responsibleName" data-translate-key-placeholder="responsibleNamePlaceholder" placeholder="Nome do Responsável" class="p-3 border border-gray-300 rounded-md">
+                <select id="responsibleLevel" class="p-3 border border-gray-300 rounded-md"><option value="Star">Star</option><option value="Business">Business</option><option value="Scale">Scale</option></select>
+                <button id="createResponsibleBtn" class="md:col-span-2 bg-blue-600 text-white font-bold py-3 px-6 rounded-md hover:bg-blue-700" data-translate-key="createResponsible">Criar Responsável</button>
+            </div>
+        </div>
+
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-semibold text-gray-700" data-translate-key="taskListTitle">Lista de Tarefas</h2>
+                <div class="flex items-center gap-4">
+                    <button id="refresh-tasks-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700" data-translate-key="refreshTasks">Atualizar Tarefas</button>
+                    <label for="filter-sort" class="text-sm font-medium" data-translate-key="sortBy">Ordenar por:</label>
+                    <select id="filter-sort" class="p-2 border border-gray-300 rounded-md">
+                        <option value="default" data-translate-key="sortDefault">Padrão</option>
+                        <option value="dueDate" data-translate-key="sortDueDate">Data de Entrega</option>
+                        <option value="urgency" data-translate-key="sortUrgency">Urgência</option>
+                    </select>
+                </div>
+            </div>
+            <div id="loader" class="loader"></div>
+            <div id="taskList" class="space-y-4 hidden"></div>
+            <div id="noTasksMessage" class="text-gray-600 text-center mt-4 hidden" data-translate-key="noTasks">Nenhuma tarefa encontrada.</div>
+        </div>
+
+        <div class="bg-white shadow-md rounded-lg p-6 mt-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-semibold text-gray-700" data-translate-key="kanbanBoardTitle">Kanban Board</h2>
+                <div class="flex items-center gap-4">
+                    <label for="kanban-responsible-filter" class="text-sm font-medium" data-translate-key="filterByResponsible">Filtrar por Responsável:</label>
+                    <select id="kanban-responsible-filter" class="p-2 border border-gray-300 rounded-md">
+                        <option value="all" data-translate-key="allResponsibles">Todos os Responsáveis</option>
+                    </select>
+                </div>
+            </div>
+            <div id="kanban-board" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="kanban-column bg-gray-100 p-4 rounded-lg" data-status="Aberto"><h3 class="font-bold text-lg mb-4 text-yellow-700" data-translate-key="statusOpen">Aberto</h3><div class="space-y-4"></div></div>
+                <div class="kanban-column bg-gray-100 p-4 rounded-lg" data-status="Em andamento"><h3 class="font-bold text-lg mb-4 text-blue-700" data-translate-key="statusInProgress">Em Andamento</h3><div class="space-y-4"></div></div>
+                <div class="kanban-column bg-gray-100 p-4 rounded-lg" data-status="Concluído"><h3 class="font-bold text-lg mb-4 text-green-700" data-translate-key="statusCompleted">Concluído</h3><div class="space-y-4"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl leading-6 font-medium text-gray-900" data-translate-key="modalTitle">Detalhes da Tarefa</h3>
+                <button id="closeEditModal" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <input type="hidden" id="editRowIndex">
+                <div><label for="editTaskTitle" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldTitle">Título</label><input type="text" id="editTaskTitle" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></div>
+                <div><label for="editTaskDescription" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldDesc">Descrição</label><textarea id="editTaskDescription" rows="4" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></textarea></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label for="editTaskDueDate" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldDueDate">Data de Entrega</label><input type="date" id="editTaskDueDate" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></div>
+                    <div><label for="editTaskStatus" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldStatus">Estado</label><select id="editTaskStatus" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></select></div>
+                    <div><label for="editTaskResponsible" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldResponsible">Responsável</label><select id="editTaskResponsible" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></select></div>
+                    <div><label for="editTaskUrgency" class="block text-sm font-medium text-gray-700" data-translate-key="modalFieldUrgency">Urgência</label><select id="editTaskUrgency" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></select></div>
+                </div>
+                <div>
+                    <label for="editAttachmentLink" class="block text-sm font-medium text-gray-700" data-translate-key="attachmentLink">Link do Anexo</label>
+                    <input type="text" id="editAttachmentLink" placeholder="https://..." class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"/>
+                </div>
+            </div>
+            <div class="flex justify-between items-center px-4 py-3 mt-4 -mx-5 -mb-5 rounded-b-md bg-gray-50">
+                <button id="deleteTaskBtn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700" data-translate-key="deleteTask">Apagar Tarefa</button>
+                <div>
+                    <button id="cancelEditButton" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 mr-2" data-translate-key="cancel">Cancelar</button>
+                    <button id="saveChangesButton" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" data-translate-key="saveChanges">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="notification" class="fixed bottom-5 right-5 z-50"></div>
+
+    <script>
+        const SPREADSHEET_ID = 'cf836457-419a-4a89-ad39-24ae2339c27f';
+        const TASKS_URL = `https://sheets.livepolls.app/api/spreadsheets/${SPREADSHEET_ID}/Tarefas`;
+        const RESPONSIBLES_URL = `https://sheets.livepolls.app/api/spreadsheets/${SPREADSHEET_ID}/Responsaveis`;
+
+        const COLUMN_NAMES = {
+            TASK: { TITLE: 'Título', DESCRIPTION: 'Descrição', DUE_DATE: 'Data de Entrega', STATUS: 'Estado', RESPONSIBLE: 'Responsável', URGENCY: 'Urgência', ATTACHMENTS: 'Anexos' },
+            RESPONSIBLE: { NAME: 'Nome do Responsável', LEVEL: 'Nível do Responsável' }
+        };
+
+        const translations = {
+            'pt-BR': {
+                pageTitle: 'CRM de Tarefas com Kanban',
+                headerTitle: 'Dashboard de Tarefas',
+                headerSubtitle: 'Organize, filtre e gerencie suas tarefas com a visualização Kanban.',
+                statusOpen: 'Aberto',
+                statusInProgress: 'Em Andamento',
+                statusCompleted: 'Concluído',
+                add: 'Adicionar',
+                newTask: 'Nova Tarefa',
+                newResponsible: 'Novo Responsável',
+                addNewTaskTitle: 'Adicionar Nova Tarefa',
+                taskTitlePlaceholder: 'Título da Tarefa',
+                taskDescPlaceholder: 'Descrição da tarefa...',
+                selectResponsible: 'Selecione o Responsável',
+                urgencyLow: 'Baixa',
+                urgencyMedium: 'Média',
+                urgencyHigh: 'Alta',
+                attachmentLink: 'Link do Anexo',
+                createTask: 'Criar Tarefa',
+                addNewResponsibleTitle: 'Adicionar Novo Responsável',
+                responsibleNamePlaceholder: 'Nome do Responsável',
+                createResponsible: 'Criar Responsável',
+                taskListTitle: 'Lista de Tarefas',
+                sortBy: 'Ordenar por:',
+                sortDefault: 'Padrão',
+                sortDueDate: 'Data de Entrega',
+                sortUrgency: 'Urgência',
+                kanbanBoardTitle: 'Kanban Board',
+                filterByResponsible: 'Filtrar por Responsável:',
+                allResponsibles: 'Todos os Responsáveis',
+                modalTitle: 'Detalhes da Tarefa',
+                modalFieldTitle: 'Título',
+                modalFieldDesc: 'Descrição',
+                modalFieldDueDate: 'Data de Entrega',
+                modalFieldStatus: 'Estado',
+                modalFieldResponsible: 'Responsável',
+                modalFieldUrgency: 'Urgência',
+                deleteTask: 'Apagar Tarefa',
+                cancel: 'Cancelar',
+                saveChanges: 'Salvar Alterações',
+                refreshTasks: 'Atualizar Tarefas',
+                noTasks: 'Nenhuma tarefa encontrada.',
+                noResponsibles: 'Nenhum responsável encontrado.',
+                notifTaskCreated: 'Tarefa criada com sucesso!',
+                notifTaskUpdated: 'Tarefa atualizada com sucesso!',
+                notifResponsibleCreated: 'Responsável criado com sucesso!',
+                notifTaskDeleted: 'Tarefa apagada com sucesso!',
+                notifTitleRequired: 'O título é obrigatório.',
+                notifResponsibleNameRequired: 'O nome do responsável é obrigatório.',
+                notifTaskNotFound: 'Tarefa não encontrada.',
+                notifRefreshRequired: 'Clique em "Atualizar Tarefas" para ver as mudanças.',
+                confirmDelete: 'Tem a certeza que quer apagar esta tarefa?',
+                errorLoadTasks: 'Falha ao carregar tarefas:',
+                errorLoadResponsibles: 'Falha ao carregar responsáveis:',
+                errorSave: 'Erro ao salvar tarefa:',
+                errorCreateResponsible: 'Erro ao criar responsável:',
+                errorDelete: 'Erro ao apagar tarefa:',
+                responsibleLabel: 'Responsável',
+                dueDateLabel: 'Entrega',
+                performanceTitle: 'Análise de Performance (Mês Atual)',
+                performanceCompletedThisMonth: 'Tarefas Concluídas (no mês)',
+                performanceOpenThisMonth: 'Tarefas Abertas (no mês)',
+                completionRateMonth: 'taxa de conclusão para o mês.',
+            },
+            'zh-CN': {
+                pageTitle: '任务看板CRM',
+                headerTitle: '任务仪表板',
+                headerSubtitle: '使用看板视图组织、筛选和管理您的任务。',
+                statusOpen: '开放',
+                statusInProgress: '进行中',
+                statusCompleted: '已完成',
+                add: '添加',
+                newTask: '新任务',
+                newResponsible: '新负责人',
+                addNewTaskTitle: '添加新任务',
+                taskTitlePlaceholder: '任务标题',
+                taskDescPlaceholder: '任务描述...',
+                selectResponsible: '选择负责人',
+                urgencyLow: '低',
+                urgencyMedium: '中',
+                urgencyHigh: '高',
+                attachmentLink: '附件链接',
+                createTask: '创建任务',
+                addNewResponsibleTitle: '添加新负责人',
+                responsibleNamePlaceholder: '负责人名称',
+                createResponsible: '创建负责人',
+                taskListTitle: '任务列表',
+                sortBy: '排序方式：',
+                sortDefault: '默认',
+                sortDueDate: '截止日期',
+                sortUrgency: '紧急程度',
+                kanbanBoardTitle: '看板',
+                filterByResponsible: '按负责人筛选：',
+                allResponsibles: '所有负责人',
+                modalTitle: '任务详情',
+                modalFieldTitle: '标题',
+                modalFieldDesc: '描述',
+                modalFieldDueDate: '截止日期',
+                modalFieldStatus: '状态',
+                modalFieldResponsible: '负责人',
+                modalFieldUrgency: '紧急程度',
+                deleteTask: '删除任务',
+                cancel: '取消',
+                saveChanges: '保存更改',
+                refreshTasks: '刷新任务',
+                noTasks: '未找到任务。',
+                noResponsibles: '未找到负责人。',
+                notifTaskCreated: '任务创建成功！',
+                notifTaskUpdated: '任务更新成功！',
+                notifResponsibleCreated: '负责人创建成功！',
+                notifTaskDeleted: '任务删除成功！',
+                notifTitleRequired: '标题为必填项。',
+                notifResponsibleNameRequired: '负责人名称为必填项。',
+                notifTaskNotFound: '任务未找到。',
+                notifRefreshRequired: '请点击“刷新任务”查看更改。',
+                confirmDelete: '您确定要删除此任务吗？',
+                errorLoadTasks: '加载任务失败：',
+                errorLoadResponsibles: '加载负责人失败：',
+                errorSave: '保存任务时出错：',
+                errorCreateResponsible: '创建负责人时出错：',
+                errorDelete: '删除任务时出错：',
+                responsibleLabel: '负责人',
+                dueDateLabel: '截止日期',
+                performanceTitle: '表现分析 (本月)',
+                performanceCompletedThisMonth: '已完成任务 (本月)',
+                performanceOpenThisMonth: '未完成任务 (本月)',
+                completionRateMonth: '本月完成率。',
+            }
+        };
+
+        const statusValues = { 'Aberto': 'statusOpen', 'Em andamento': 'statusInProgress', 'Concluído': 'statusCompleted' };
+        const urgencyValues = { 'Baixa': 'urgencyLow', 'Média': 'urgencyMedium', 'Alta': 'urgencyHigh' };
+
+        let allTasks = [];
+        let responsibles = [];
+        let currentLang = 'pt-BR';
+
+        const ui = {
+            loader: document.getElementById('loader'),
+            notification: document.getElementById('notification'),
+            addMenu: { mainBtn: document.getElementById('add-main-btn'), options: document.getElementById('add-options'), addTaskBtn: document.getElementById('add-task-btn'), addResponsibleBtn: document.getElementById('add-responsible-btn') },
+            taskForm: { container: document.getElementById('task-form-container'), title: document.getElementById('taskTitle'), description: document.getElementById('taskDescription'), dueDate: document.getElementById('taskDueDate'), responsible: document.getElementById('taskResponsible'), urgency: document.getElementById('taskUrgency'), attachmentLink: document.getElementById('taskAttachmentLink'), createBtn: document.getElementById('createTaskBtn') },
+            responsibleForm: { container: document.getElementById('responsible-form-container'), name: document.getElementById('responsibleName'), level: document.getElementById('responsibleLevel'), createBtn: document.getElementById('createResponsibleBtn') },
+            dashboard: { cards: document.querySelectorAll('#dashboard [data-status-filter]'), open: document.getElementById('count-aberto'), inProgress: document.getElementById('count-em-andamento'), completed: document.getElementById('count-concluido') },
+            performance: { 
+                container: document.getElementById('performance-analysis'),
+                completedCount: document.getElementById('completed-count'),
+                openCount: document.getElementById('open-count'),
+                completedBar: document.getElementById('completed-bar'),
+                openBar: document.getElementById('open-bar'),
+                chartCompleted: document.getElementById('chart-completed'),
+                chartOpen: document.getElementById('chart-open'),
+                chartCompletedLabel: document.getElementById('chart-completed-label'),
+                chartOpenLabel: document.getElementById('chart-open-label'),
+                completionPercentage: document.getElementById('completion-percentage')
+            },
+            taskList: document.getElementById('taskList'),
+            noTasksMessage: document.getElementById('noTasksMessage'),
+            refreshTasksBtn: document.getElementById('refresh-tasks-btn'),
+            filters: { sort: document.getElementById('filter-sort') },
+            kanban: { board: document.getElementById('kanban-board'), responsibleFilter: document.getElementById('kanban-responsible-filter'), columns: document.querySelectorAll('.kanban-column') },
+            editModal: { element: document.getElementById('editModal'), rowIndex: document.getElementById('editRowIndex'), title: document.getElementById('editTaskTitle'), description: document.getElementById('editTaskDescription'), dueDate: document.getElementById('editTaskDueDate'), status: document.getElementById('editTaskStatus'), responsible: document.getElementById('editTaskResponsible'), urgency: document.getElementById('editTaskUrgency'), attachmentLink: document.getElementById('editAttachmentLink'), saveBtn: document.getElementById('saveChangesButton'), cancelBtn: document.getElementById('cancelEditButton'), closeBtn: document.getElementById('closeEditModal'), deleteBtn: document.getElementById('deleteTaskBtn') },
+            lang: { pt: document.getElementById('lang-pt'), zh: document.getElementById('lang-zh') }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.documentElement.lang = lang === 'zh-CN' ? 'zh-CN' : 'pt-BR';
+            document.querySelectorAll('[data-translate-key]').forEach(el => {
+                const key = el.dataset.translateKey;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            document.querySelectorAll('[data-translate-key-placeholder]').forEach(el => {
+                const key = el.dataset.translateKeyPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+            populateStatusAndUrgencyDropdowns();
+            ui.lang.pt.classList.toggle('lang-btn-active', lang === 'pt-BR');
+            ui.lang.zh.classList.toggle('lang-btn-active', lang === 'zh-CN');
+            if (allTasks.length > 0) {
+                applyFilters();
+            }
+            localStorage.setItem('preferredLanguage', lang);
+        }
+
+        function populateStatusAndUrgencyDropdowns() {
+            const lang = currentLang;
+            const statusSelects = [ui.editModal.status];
+            const urgencySelects = [ui.taskForm.urgency, ui.editModal.urgency];
+
+            statusSelects.forEach(select => {
+                const selectedValue = select.value;
+                select.innerHTML = '';
+                Object.keys(statusValues).forEach(originalStatus => {
+                    const option = document.createElement('option');
+                    option.value = originalStatus;
+                    option.textContent = translations[lang][statusValues[originalStatus]];
+                    select.appendChild(option);
+                });
+                select.value = selectedValue;
+            });
+
+            urgencySelects.forEach(select => {
+                const selectedValue = select.value;
+                select.innerHTML = '';
+                Object.keys(urgencyValues).forEach(originalUrgency => {
+                    const option = document.createElement('option');
+                    option.value = originalUrgency;
+                    option.textContent = translations[lang][urgencyValues[originalUrgency]];
+                    select.appendChild(option);
+                });
+                select.value = selectedValue || 'Baixa';
+            });
+        }
+
+        function showNotification(messageKey, type = 'success', errorDetails = '') {
+            const message = translations[currentLang][messageKey] || messageKey;
+            const notif = document.createElement('div');
+            notif.className = `p-4 rounded-lg shadow-lg animate-fade-in ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white mb-2`;
+            notif.textContent = `${message} ${errorDetails}`;
+            ui.notification.appendChild(notif);
+            setTimeout(() => { notif.remove(); }, 4000);
+        }
+
+        async function apiCall(url, method = 'GET', body = null, retryCount = 0, maxRetries = 3) {
+            ui.loader.classList.remove('hidden');
+            try {
+                const options = { 
+                    method, 
+                    headers: { 'Content-Type': 'application/json' },
+                    cache: 'no-store'
+                };
+                if (body) options.body = JSON.stringify(body);
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return await response.json();
+                }
+                return null;
+            } catch (error) {
+                if (method === 'DELETE' && retryCount < maxRetries) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return apiCall(url, method, body, retryCount + 1, maxRetries);
+                }
+                console.error(`API Error: ${method} ${url}`, error);
+                throw error;
+            } finally {
+                ui.loader.classList.add('hidden');
+            }
+        }
+
+        const getUrgencyClass = (urgency) => ({ 'Alta': 'bg-red-500', 'Média': 'bg-orange-500', 'Baixa': 'bg-green-500' }[urgency] || 'bg-gray-400');
+        const getStatusClass = (status) => ({ 'Aberto': 'bg-yellow-500', 'Em andamento': 'bg-blue-500', 'Concluído': 'bg-green-500' }[status] || 'bg-gray-400');
+
+        function standardizeTaskData(task) {
+            if (!task || typeof task !== 'object') return null;
+            const getField = (obj, field) => {
+                for (const key of Object.keys(obj)) {
+                    if (key.toLowerCase() === field.toLowerCase()) return obj[key];
+                }
+                return null;
+            };
+            const standardized = {
+                [COLUMN_NAMES.TASK.TITLE]: getField(task, COLUMN_NAMES.TASK.TITLE) || getField(task, 'title') || '',
+                [COLUMN_NAMES.TASK.DESCRIPTION]: getField(task, COLUMN_NAMES.TASK.DESCRIPTION) || getField(task, 'description') || '',
+                [COLUMN_NAMES.TASK.DUE_DATE]: getField(task, COLUMN_NAMES.TASK.DUE_DATE) || getField(task, 'dueDate') || '',
+                [COLUMN_NAMES.TASK.STATUS]: getField(task, COLUMN_NAMES.TASK.STATUS) || getField(task, 'status') || 'Aberto',
+                [COLUMN_NAMES.TASK.RESPONSIBLE]: getField(task, COLUMN_NAMES.TASK.RESPONSIBLE) || getField(task, 'responsible') || '',
+                [COLUMN_NAMES.TASK.URGENCY]: getField(task, COLUMN_NAMES.TASK.URGENCY) || getField(task, 'urgency') || 'Baixa',
+                [COLUMN_NAMES.TASK.ATTACHMENTS]: getField(task, COLUMN_NAMES.TASK.ATTACHMENTS) || getField(task, 'attachments') || ''
+            };
+            if (!standardized[COLUMN_NAMES.TASK.TITLE]) return null;
+            return standardized;
+        }
+
+        function standardizeResponsibleData(responsible) {
+            if (!responsible || typeof responsible !== 'object') return null;
+            const getField = (obj, field) => {
+                for (const key of Object.keys(obj)) {
+                    if (key.toLowerCase() === field.toLowerCase()) return obj[key];
+                }
+                return null;
+            };
+            const standardized = {
+                [COLUMN_NAMES.RESPONSIBLE.NAME]: getField(responsible, COLUMN_NAMES.RESPONSIBLE.NAME) || getField(responsible, 'name') || '',
+                [COLUMN_NAMES.RESPONSIBLE.LEVEL]: getField(responsible, COLUMN_NAMES.RESPONSIBLE.LEVEL) || getField(responsible, 'level') || 'Star'
+            };
+            if (!standardized[COLUMN_NAMES.RESPONSIBLE.NAME]) return null;
+            return standardized;
+        }
+
+        function renderTasks(tasks) {
+            ui.taskList.innerHTML = '';
+            ui.taskList.classList.remove('hidden');
+            ui.noTasksMessage.classList.add('hidden');
+
+            if (!tasks || tasks.length === 0) {
+                ui.noTasksMessage.classList.remove('hidden');
+                renderKanban([]);
+                return;
+            }
+
+            tasks.forEach((task) => {
+                if (!task) return;
+                const responsibleInfo = responsibles.find(r => r && r[COLUMN_NAMES.RESPONSIBLE.NAME] === task[COLUMN_NAMES.TASK.RESPONSIBLE]);
+                const card = document.createElement('div');
+                card.className = 'task-card bg-gray-50 p-4 rounded-lg border shadow-sm';
+                const attachmentLink = task[COLUMN_NAMES.TASK.ATTACHMENTS];
+                const statusText = translations[currentLang][statusValues[task[COLUMN_NAMES.TASK.STATUS]]] || task[COLUMN_NAMES.TASK.STATUS];
+                const urgencyText = translations[currentLang][urgencyValues[task[COLUMN_NAMES.TASK.URGENCY]]] || task[COLUMN_NAMES.TASK.URGENCY];
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-bold text-lg task-title-button">${task[COLUMN_NAMES.TASK.TITLE]}</h3>
+                            <p class="text-gray-600 text-sm mt-1">${task[COLUMN_NAMES.TASK.DESCRIPTION] || 'Sem descrição'}</p>
+                        </div>
+                        <div class="flex-shrink-0 ml-4 text-right">
+                            <span class="text-xs font-semibold px-2 py-1 rounded-full text-white ${getStatusClass(task[COLUMN_NAMES.TASK.STATUS])}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t flex justify-between items-center text-sm text-gray-500">
+                        <div>
+                            <p><strong>${translations[currentLang].responsibleLabel}:</strong> ${task[COLUMN_NAMES.TASK.RESPONSIBLE] || 'N/A'} <span class="text-xs">(${responsibleInfo ? responsibleInfo[COLUMN_NAMES.RESPONSIBLE.LEVEL] : 'N/A'})</span></p>
+                            <p><strong>${translations[currentLang].dueDateLabel}:</strong> ${task[COLUMN_NAMES.TASK.DUE_DATE] || 'N/A'}</p>
+                        </div>
+                        <div class="text-right flex items-center gap-2">
+                           ${attachmentLink ? `<a href="${attachmentLink}" target="_blank" rel="noopener noreferrer"><svg class="h-5 w-5 text-blue-500 hover:text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg></a>` : ''}
+                            <span class="text-xs font-semibold px-2 py-1 rounded-full text-white ${getUrgencyClass(task[COLUMN_NAMES.TASK.URGENCY])}">${urgencyText}</span>
+                        </div>
+                    </div>
+                `;
+                card.querySelector('.task-title-button').addEventListener('click', () => showEditModal(task, allTasks.findIndex(t => t === task) + 1));
+                ui.taskList.appendChild(card);
+            });
+            renderKanban(tasks);
+        }
+
+        function renderKanban(tasks) {
+            ui.kanban.columns.forEach(col => col.querySelector('.space-y-4').innerHTML = '');
+            if (!tasks || tasks.length === 0) return;
+            
+            tasks.forEach((task) => {
+                if (!task) return;
+                const taskIndex = allTasks.findIndex(t => t === task);
+                const card = document.createElement('div');
+                card.className = 'kanban-card bg-white p-3 rounded-md shadow cursor-pointer';
+                card.draggable = true;
+                card.dataset.taskIndex = taskIndex;
+                const attachmentLink = task[COLUMN_NAMES.TASK.ATTACHMENTS];
+                const urgencyText = translations[currentLang][urgencyValues[task[COLUMN_NAMES.TASK.URGENCY]]] || task[COLUMN_NAMES.TASK.URGENCY];
+
+                card.innerHTML = `
+                    <p class="font-semibold pointer-events-none">${task[COLUMN_NAMES.TASK.TITLE]}</p>
+                    <p class="text-sm text-gray-500 pointer-events-none">${task[COLUMN_NAMES.TASK.RESPONSIBLE]}</p>
+                    <div class="mt-2 pt-2 border-t flex justify-between items-center">
+                        <span class="text-xs text-gray-500 pointer-events-none">${task[COLUMN_NAMES.TASK.DUE_DATE] || ''}</span>
+                        <div class="flex items-center gap-2">
+                          ${attachmentLink ? `<svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>` : ''}
+                          <span class="text-xs font-semibold px-2 py-1 rounded-full text-white ${getUrgencyClass(task[COLUMN_NAMES.TASK.URGENCY])} pointer-events-none">${urgencyText}</span>
+                        </div>
+                    </div>
+                `;
+                const column = ui.kanban.board.querySelector(`.kanban-column[data-status="${task[COLUMN_NAMES.TASK.STATUS]}"] .space-y-4`);
+                if (column) column.appendChild(card);
+
+                card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', taskIndex); setTimeout(() => card.classList.add('dragging'), 0); });
+                card.addEventListener('dragend', () => card.classList.remove('dragging'));
+                card.addEventListener('click', () => showEditModal(task, taskIndex + 1));
+            });
+        }
+
+        function updateDashboard(tasks) {
+            let counts = { 'Aberto': 0, 'Em andamento': 0, 'Concluído': 0 };
+            if (tasks && tasks.length > 0) {
+                tasks.forEach(task => {
+                    if (task && counts[task[COLUMN_NAMES.TASK.STATUS]] !== undefined) {
+                        counts[task[COLUMN_NAMES.TASK.STATUS]]++;
+                    }
+                });
+            }
+            ui.dashboard.open.textContent = counts['Aberto'];
+            ui.dashboard.inProgress.textContent = counts['Em andamento'];
+            ui.dashboard.completed.textContent = counts['Concluído'];
+            updatePerformanceReport();
+        }
+
+        function updatePerformanceReport() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+
+            const tasksInCurrentMonth = allTasks.filter(task => {
+                const dueDateString = task ? task[COLUMN_NAMES.TASK.DUE_DATE] : null;
+                if (!dueDateString) return false;
+                const dueDate = new Date(dueDateString + 'T00:00:00');
+                if (isNaN(dueDate.getTime())) return false;
+                return dueDate.getFullYear() === currentYear && dueDate.getMonth() === currentMonth;
+            });
+
+            const completedTasks = tasksInCurrentMonth.filter(task => task[COLUMN_NAMES.TASK.STATUS] === 'Concluído');
+            const openTasks = tasksInCurrentMonth.filter(task => task[COLUMN_NAMES.TASK.STATUS] === 'Aberto');
+
+            const completedCount = completedTasks.length;
+            const openCount = openTasks.length;
+            const totalTasks = completedCount + openCount;
+
+            ui.performance.completedCount.textContent = completedCount;
+            ui.performance.openCount.textContent = openCount;
+
+            const completionPercentage = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+            const openPercentage = totalTasks > 0 ? 100 - completionPercentage : 0;
+
+            ui.performance.completedBar.style.width = `${completionPercentage}%`;
+            ui.performance.openBar.style.width = `${openPercentage}%`;
+
+            ui.performance.completionPercentage.textContent = `${completionPercentage}%`;
+            
+            let percentageColor = 'text-red-500';
+            if (completionPercentage >= 75) percentageColor = 'text-green-600';
+            else if (completionPercentage >= 50) percentageColor = 'text-green-500';
+            else if (completionPercentage >= 25) percentageColor = 'text-yellow-500';
+            ui.performance.completionPercentage.className = `text-2xl font-bold ${percentageColor} transition-colors duration-500`;
+
+            const maxCount = Math.max(1, completedCount, openCount);
+            const completedHeight = totalTasks > 0 ? (completedCount / maxCount) * 100 : 0;
+            const openHeight = totalTasks > 0 ? (openCount / maxCount) * 100 : 0;
+
+            ui.performance.chartCompleted.style.height = `${completedHeight}%`;
+            ui.performance.chartOpen.style.height = `${openHeight}%`;
+            ui.performance.chartCompletedLabel.textContent = completedCount > 0 ? completedCount : '';
+            ui.performance.chartOpenLabel.textContent = openCount > 0 ? openCount : '';
+        }
+
+        async function loadResponsibles(retryCount = 0, maxRetries = 5) {
+            try {
+                const data = await apiCall(RESPONSIBLES_URL);
+                let responsibleData = Array.isArray(data) ? data : (data && data.data && Array.isArray(data.data) ? data.data : []);
+                responsibles = responsibleData.map(standardizeResponsibleData).filter(r => r !== null);
+                
+                if (responsibles.length === 0 && retryCount < maxRetries) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return loadResponsibles(retryCount + 1, maxRetries);
+                }
+                const responsibleSelects = [ui.taskForm.responsible, ui.editModal.responsible, ui.kanban.responsibleFilter];
+                responsibleSelects.forEach(select => {
+                    const selectedValue = select.value;
+                    select.innerHTML = select.id === 'kanban-responsible-filter' ? `<option value="all">${translations[currentLang].allResponsibles}</option>` : `<option value="">${translations[currentLang].selectResponsible}</option>`;
+                    if (responsibles.length > 0) {
+                        responsibles.forEach(responsible => {
+                            if (responsible) {
+                                const option = document.createElement('option');
+                                option.value = responsible[COLUMN_NAMES.RESPONSIBLE.NAME];
+                                option.textContent = responsible[COLUMN_NAMES.RESPONSIBLE.NAME];
+                                select.appendChild(option);
+                            }
+                        });
+                    }
+                    select.value = selectedValue;
+                });
+                if (responsibles.length === 0) showNotification('noResponsibles', 'error');
+            } catch (error) {
+                showNotification('errorLoadResponsibles', 'error', error.message);
+            }
+        }
+
+        async function loadTasks(retryCount = 0, maxRetries = 5) {
+            try {
+                const data = await apiCall(TASKS_URL);
+                let taskData = Array.isArray(data) ? data : (data && data.data && Array.isArray(data.data) ? data.data : []);
+                allTasks = taskData.map(standardizeTaskData).filter(task => task !== null);
+                
+                if (allTasks.length === 0 && retryCount < maxRetries) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return loadTasks(retryCount + 1, maxRetries);
+                }
+                applyFilters();
+                ui.taskList.classList.remove('hidden');
+                if (allTasks.length === 0) ui.noTasksMessage.classList.remove('hidden');
+            } catch (error) {
+                showNotification('errorLoadTasks', 'error', error.message);
+                ui.taskList.classList.remove('hidden');
+                ui.noTasksMessage.classList.remove('hidden');
+            }
+        }
+
+        function applyFilters() {
+            let filteredTasks = [...allTasks];
+            const activeStatusFilter = document.querySelector('#dashboard .dashboard-card-active');
+            if (activeStatusFilter) {
+                const status = activeStatusFilter.dataset.statusFilter;
+                filteredTasks = filteredTasks.filter(task => task && task[COLUMN_NAMES.TASK.STATUS] === status);
+            }
+
+            const kanbanResponsibleFilter = ui.kanban.responsibleFilter.value;
+            if (kanbanResponsibleFilter !== 'all') {
+                filteredTasks = filteredTasks.filter(task => task && task[COLUMN_NAMES.TASK.RESPONSIBLE] === kanbanResponsibleFilter);
+            }
+
+            const sortBy = ui.filters.sort.value;
+            if (sortBy === 'dueDate') {
+                filteredTasks.sort((a, b) => {
+                    if (!a || !b) return 0;
+                    const dateA = a[COLUMN_NAMES.TASK.DUE_DATE] ? new Date(a[COLUMN_NAMES.TASK.DUE_DATE]) : new Date('9999-12-31');
+                    const dateB = b[COLUMN_NAMES.TASK.DUE_DATE] ? new Date(b[COLUMN_NAMES.TASK.DUE_DATE]) : new Date('9999-12-31');
+                    return dateA - dateB;
+                });
+            } else if (sortBy === 'urgency') {
+                const urgencyOrder = { 'Alta': 3, 'Média': 2, 'Baixa': 1 };
+                filteredTasks.sort((a, b) => {
+                    if (!a || !b) return 0;
+                    return (urgencyOrder[b[COLUMN_NAMES.TASK.URGENCY]] || 0) - (urgencyOrder[a[COLUMN_NAMES.TASK.URGENCY]] || 0);
+                });
+            }
+
+            renderTasks(filteredTasks);
+            updateDashboard(allTasks);
+        }
+
+        async function createTask() {
+            const title = ui.taskForm.title.value.trim();
+            if (!title) {
+                showNotification('notifTitleRequired', 'error');
+                return;
+            }
+            const newTask = {
+                [COLUMN_NAMES.TASK.TITLE]: title,
+                [COLUMN_NAMES.TASK.DESCRIPTION]: ui.taskForm.description.value.trim(),
+                [COLUMN_NAMES.TASK.DUE_DATE]: ui.taskForm.dueDate.value,
+                [COLUMN_NAMES.TASK.STATUS]: 'Aberto',
+                [COLUMN_NAMES.TASK.RESPONSIBLE]: ui.taskForm.responsible.value,
+                [COLUMN_NAMES.TASK.URGENCY]: ui.taskForm.urgency.value,
+                [COLUMN_NAMES.TASK.ATTACHMENTS]: ui.taskForm.attachmentLink.value.trim()
+            };
+            try {
+                await apiCall(TASKS_URL, 'POST', [newTask]);
+                showNotification('notifTaskCreated');
+                ui.taskForm.container.classList.add('hidden');
+                ui.taskForm.title.value = '';
+                ui.taskForm.description.value = '';
+                ui.taskForm.dueDate.value = '';
+                ui.taskForm.responsible.value = '';
+                ui.taskForm.urgency.value = 'Baixa';
+                ui.taskForm.attachmentLink.value = '';
+                await loadTasks();
+            } catch (error) {
+                showNotification('errorSave', 'error', error.message);
+            }
+        }
+
+        async function createResponsible() {
+            const name = ui.responsibleForm.name.value.trim();
+            if (!name) {
+                showNotification('notifResponsibleNameRequired', 'error');
+                return;
+            }
+            const newResponsible = {
+                [COLUMN_NAMES.RESPONSIBLE.NAME]: name,
+                [COLUMN_NAMES.RESPONSIBLE.LEVEL]: ui.responsibleForm.level.value
+            };
+            try {
+                await apiCall(RESPONSIBLES_URL, 'POST', [newResponsible]);
+                showNotification('notifResponsibleCreated');
+                ui.responsibleForm.container.classList.add('hidden');
+                ui.responsibleForm.name.value = '';
+                await loadResponsibles();
+            } catch (error) {
+                showNotification('errorCreateResponsible', 'error', error.message);
+            }
+        }
+
+        function showEditModal(task, rowIndex) {
+            if (!task) return;
+            ui.editModal.rowIndex.value = rowIndex;
+            ui.editModal.title.value = task[COLUMN_NAMES.TASK.TITLE] || '';
+            ui.editModal.description.value = task[COLUMN_NAMES.TASK.DESCRIPTION] || '';
+            ui.editModal.dueDate.value = task[COLUMN_NAMES.TASK.DUE_DATE] || '';
+            ui.editModal.status.value = task[COLUMN_NAMES.TASK.STATUS] || 'Aberto';
+            ui.editModal.responsible.value = task[COLUMN_NAMES.TASK.RESPONSIBLE] || '';
+            ui.editModal.urgency.value = task[COLUMN_NAMES.TASK.URGENCY] || 'Baixa';
+            ui.editModal.attachmentLink.value = task[COLUMN_NAMES.TASK.ATTACHMENTS] || '';
+            ui.editModal.element.classList.remove('hidden');
+        }
+
+        async function saveChanges() {
+            const rowIndex = parseInt(ui.editModal.rowIndex.value);
+            if (isNaN(rowIndex) || rowIndex < 1) {
+                showNotification('errorSave', 'error', 'Índice de linha inválido');
+                return;
+            }
+            const updatedTask = {
+                [COLUMN_NAMES.TASK.TITLE]: ui.editModal.title.value.trim(),
+                [COLUMN_NAMES.TASK.DESCRIPTION]: ui.editModal.description.value.trim(),
+                [COLUMN_NAMES.TASK.DUE_DATE]: ui.editModal.dueDate.value,
+                [COLUMN_NAMES.TASK.STATUS]: ui.editModal.status.value,
+                [COLUMN_NAMES.TASK.RESPONSIBLE]: ui.editModal.responsible.value,
+                [COLUMN_NAMES.TASK.URGENCY]: ui.editModal.urgency.value,
+                [COLUMN_NAMES.TASK.ATTACHMENTS]: ui.editModal.attachmentLink.value.trim()
+            };
+            if (!updatedTask[COLUMN_NAMES.TASK.TITLE]) {
+                showNotification('notifTitleRequired', 'error');
+                return;
+            }
+            try {
+                await apiCall(`${TASKS_URL}/${rowIndex}`, 'PUT', updatedTask);
+                showNotification('notifTaskUpdated');
+                ui.editModal.element.classList.add('hidden');
+                await loadTasks();
+            } catch (error) {
+                showNotification('errorSave', 'error', error.message);
+            }
+        }
+
+        async function deleteTask() {
+            const rowIndex = parseInt(ui.editModal.rowIndex.value);
+            if (isNaN(rowIndex) || rowIndex < 1) {
+                showNotification('errorDelete', 'error', 'Índice de linha inválido');
+                return;
+            }
+            if (confirm(translations[currentLang].confirmDelete)) {
+                try {
+                    await apiCall(`${TASKS_URL}/${rowIndex}`, 'DELETE', {});
+                    showNotification('notifTaskDeleted');
+                    ui.editModal.element.classList.add('hidden');
+                    await loadTasks();
+                } catch (error) {
+                    showNotification('errorDelete', 'error', error.message);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const storedLang = localStorage.getItem('preferredLanguage');
+            setLanguage(storedLang || 'pt-BR');
+            populateStatusAndUrgencyDropdowns();
+            updatePerformanceReport();
+            await loadResponsibles();
+            await loadTasks();
+        });
+
+        ui.addMenu.mainBtn.addEventListener('click', () => ui.addMenu.options.classList.toggle('hidden'));
+        ui.addMenu.addTaskBtn.addEventListener('click', (e) => { e.preventDefault(); ui.taskForm.container.classList.remove('hidden'); ui.responsibleForm.container.classList.add('hidden'); ui.addMenu.options.classList.add('hidden'); });
+        ui.addMenu.addResponsibleBtn.addEventListener('click', (e) => { e.preventDefault(); ui.responsibleForm.container.classList.remove('hidden'); ui.taskForm.container.classList.add('hidden'); ui.addMenu.options.classList.add('hidden'); });
+        ui.taskForm.createBtn.addEventListener('click', createTask);
+        ui.responsibleForm.createBtn.addEventListener('click', createResponsible);
+        ui.refreshTasksBtn.addEventListener('click', async () => { await loadResponsibles(); await loadTasks(); });
+        ui.filters.sort.addEventListener('change', applyFilters);
+        ui.kanban.responsibleFilter.addEventListener('change', applyFilters);
+
+        ui.dashboard.cards.forEach(card => {
+            card.addEventListener('click', () => {
+                if (card.classList.contains('dashboard-card-active')) {
+                    card.classList.remove('dashboard-card-active');
+                } else {
+                    ui.dashboard.cards.forEach(c => c.classList.remove('dashboard-card-active'));
+                    card.classList.add('dashboard-card-active');
+                }
+                applyFilters();
+            });
+        });
+
+        ui.kanban.columns.forEach(column => {
+            column.addEventListener('dragover', e => { e.preventDefault(); column.classList.add('border-blue-500', 'border-2'); });
+            column.addEventListener('dragleave', () => column.classList.remove('border-blue-500', 'border-2'));
+            column.addEventListener('drop', async e => {
+                e.preventDefault();
+                column.classList.remove('border-blue-500', 'border-2');
+                const taskIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                const task = allTasks[taskIndex];
+                const newStatus = column.dataset.status;
+                if (task && task[COLUMN_NAMES.TASK.STATUS] !== newStatus) {
+                    const originalStatus = task[COLUMN_NAMES.TASK.STATUS];
+                    task[COLUMN_NAMES.TASK.STATUS] = newStatus;
+                    try {
+                        await apiCall(`${TASKS_URL}/${taskIndex + 1}`, 'PUT', task);
+                        showNotification('notifTaskUpdated');
+                        await loadTasks();
+                    } catch (error) {
+                        task[COLUMN_NAMES.TASK.STATUS] = originalStatus;
+                        showNotification('errorSave', 'error', error.message);
+                        applyFilters();
+                    }
+                }
+            });
+        });
+
+        ui.editModal.closeBtn.addEventListener('click', () => ui.editModal.element.classList.add('hidden'));
+        ui.editModal.cancelBtn.addEventListener('click', () => ui.editModal.element.classList.add('hidden'));
+        ui.editModal.saveBtn.addEventListener('click', saveChanges);
+        ui.editModal.deleteBtn.addEventListener('click', deleteTask);
+        ui.lang.pt.addEventListener('click', () => setLanguage('pt-BR'));
+        ui.lang.zh.addEventListener('click', () => setLanguage('zh-CN'));
+    </script>
+</body>
+</html>
